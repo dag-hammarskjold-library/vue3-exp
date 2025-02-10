@@ -1,0 +1,8 @@
+{% extends 'base.html' %} {% block content %}    
+
+<div id="vm">
+    <customcomponent />
+</div>
+
+<script type="module" src="{{url_for('static', filename='js/custom.js')}}" ></script>
+{% endblock %}
