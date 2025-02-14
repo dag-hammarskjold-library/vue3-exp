@@ -1,0 +1,361 @@
+<!-- main app -->
+
+<!doctype html>
+<html lang="en">
+  <title>Metadata Editor 3-alpha</title>
+  <div id="app"></div>
+</html>
+
+<script type="module">
+  import { createApp } from "./static/js/vue-v3.5.13.esm-browser.js"
+  import { User } from "./static/js/user.mjs"
+  import { Jmarc } from "./static/js/jmarc.mjs"
+  
+  // data to be provided provided by the server. hardcoded for now
+  var APIURL = "http://localhost:5000/api/"
+  User.apiUrl = APIURL
+  var user = new User("dummy")
+
+  /* main app */
+  const app = createApp({
+    data: function() {
+      return {
+        date: new Date,
+        apiUrl: APIURL,
+        user: user,
+        showBasket: true,
+        showSearch: true,
+        showRecordstage: false,
+        basketRecords: [], // the records in the user's basket
+        activeRecords: [], // the records in the recordstage
+        // css
+        basketContainer: {"basket-container": true, "basket-container__hidden": false},
+        searchContainer: {"search-container": true, "search-container__hidden": false},
+        recordstageContainer: {"recordstage-container": true, "recordstage-container__hidden": true}
+      }
+    },
+    computed: {
+      basketToggleMessage() {return this.showBasket ? "hide basket" : "show basket"},
+      editorToggleMessage() {return this.showSearch ? "switch to editor" : "switch to search"}
+    },
+    template: /* html */ `
+      {{ date }}
+      <br>Note: DLX-REST must be running on localhost port 5000
+      <br>
+      <div class="app-container">
+        <app-header class="header-container"></app-header>
+        <div>
+          <span class="clickable-text" @click="toggleShowBasket">{{ basketToggleMessage }}</span>
+          <app-basket :class="basketContainer" :user="user" @activate-record="(jmarc) => activateRecord(jmarc)"></app-basket>
+        </div>
+        <div class="search-or-recordstage-container">
+          <span class="clickable-text" @click="toggleShowSearchEditor">{{ editorToggleMessage }}</span>
+          <app-search :class="searchContainer"></app-search>
+          <app-recordstage :class="recordstageContainer" :records="activeRecords"></app-recordstage>
+        </div>
+      </div>
+    `,
+    methods: {
+      toggleShowBasket() {
+        this.showBasket = !this.showBasket
+        this.basketContainer["basket__hidden"] = !this.basketContainer["basket__hidden"]
+      },
+      toggleShowSearchEditor() {
+        this.showSearch = !this.showSearch
+        this.showRecordstage = !this.showRecordstage
+        this.searchContainer["recordstage-container__hidden"] = !this.searchContainer["recordstage-container__hidden"]
+        this.recordstageContainer["recordstage-container__hidden"] = !this.recordstageContainer["recordstage-container__hidden"]
+      },
+      activateRecord(jmarc) {
+        console.log("opening " + jmarc.recordId)
+
+        if (this.showSearch) {
+          this.toggleShowSearchEditor()
+        }
+        
+        if (this.activeRecords.includes(jmarc)) {
+          const index = this.activeRecords.indexOf(jmarc)
+          this.activeRecords.splice(index, 1)
+        }
+
+        // set the record as the first element of the array
+        this.activeRecords.unshift(jmarc)
+        
+      }
+    }
+  })
+  
+  /* header */
+  app.component(
+    "app-header",
+    {
+      template: /* html */ `
+        <div class="header">
+          <div class="header-logo">
+            <img src="./img/dhl.png"></img>
+          </div>
+          <div class="bibs"></div>
+          <div class="speeches"></div>
+          <div class="votes"></div>
+          <div class="auths"></div>
+          <div class="browse"></div>
+          <div class="editor"></div>
+          <div class="dashboards"></div>
+          <div class="help"></div>
+          <div class="login"></div>
+          <div class="admin"></div>
+        </div>
+      `
+    }
+  )
+  
+  /* basket */
+  app.component(
+    "app-basket",
+    {
+      props: {user: {type: User}},
+      data: function() {
+        return {
+          hidden: false,
+          records: [],
+          // css
+          class: {basket__hidden: false}
+        }
+      },
+      created() {},
+      template: /* html */ `
+        <div class="basket">
+          <div v-for="jmarc in records" :key="jmarc.collection + '/' + jmarc.recordId">
+            <basket-record :jmarc="jmarc" @click="$emit('activate-record', jmarc)"></basket-record>
+          </div>
+        </div>
+      `,
+      mounted() {
+        // todo: get the user basket if any. requires authorization.
+        console.log(user)
+
+        // hardcode some records into the basket for now
+        Jmarc.apiUrl = APIURL
+        Jmarc.get("bibs", 1000110).then(jmarc => this.records.push(jmarc))
+        Jmarc.get("bibs", 999998).then(jmarc => this.records.push(jmarc))
+        Jmarc.get("auths", 552168).then(jmarc => this.records.push(jmarc))
+      },
+      methods: {
+        addRecord(jmarc) {
+          this.records.push(jmarc)
+        }
+      }
+    }
+  )
+
+  app.component(
+    "basket-record",
+    {
+      props: {jmarc: {"type": Jmarc}},
+      data: function() {
+        return {}
+      },
+      template: /* html */ `
+        <div class="basket-record">
+          {{ jmarc.collection + "/" + jmarc.recordId  }}
+          <!-- {{ jmarc.toStr() }} -->
+        </div>
+      `,
+      methods: {}
+    }
+  )
+  
+  /* recordstage */
+  app.component(
+    "app-recordstage",
+    {
+      props: {records: {type: Array}},
+      data: function() {
+        return {
+          hidden: false,
+        }
+      },
+      template: /* html */ `
+        <div class="recordstage">
+          <div class="recordstage-menu">
+            <button @click="toggleCreateRecordDropdown">create record</button>
+            <button class="merge-record" @click="toggleMergeRecordsDropdown">merge auths</button>
+          </div>
+          <div class="recordstage-display">
+            <recordstage-record v-for="jmarc in records" :key="jmarc.collection + jmarc.recordId" :record="jmarc"></recordstage-record>
+          </div>
+
+        </div>
+      `,
+      //watch: {records: function(before, after) {console.log("is this doing anything?")}},
+      methods: {
+        addRecord(jmarc) {
+          this.records.push(jmarc)
+        },
+        toggleCreateRecordDropdown() {window.alert("workform list")},
+        toggleMergeRecordsDropdown() {window.alert("merge chooser")}
+      }
+    }
+  )
+
+  app.component(
+    "recordstage-record",
+    {
+      props: {record: {type: Jmarc}},
+      data: function() {
+        return {}
+      },
+      template: /* html */ `
+        <div class="recordstage-record">
+          {{ record.toStr() }}
+        </div>
+      `
+    }
+  )
+
+  /* search */
+  app.component(
+    "app-search",
+    {
+      props: {},
+      data: function() {
+        return {
+          hidden: false
+        }
+      },
+      template: /* html */ `
+        <div class="search">
+          <advanced-search class="advanced=search" />
+          <div class="search-box">
+            search: <input style="display: inline; margin-top: 5%; width: 75%"></input>
+          </div>
+          <div class=search-options>
+
+          </div>
+        </div>
+      `
+    }
+  )
+
+  app.component(
+    "advanced-search",
+    {
+      template: /* html */ `
+        <div></div>
+      `
+    }
+  )
+
+  app.mount('#app')
+</script>
+
+<style>
+  /* main app */
+  .clickable-text {
+    color: blue;
+  }
+
+  .clickable-text:hover {
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  div.app-container {
+    display: inline-grid;
+    grid-template-columns: 2;
+    grid-template-rows: 2;
+    position: block;
+    width: 100%;
+    height: 675px;
+  }
+
+  div.header-container {
+    grid-row: 1;
+    grid-column: 1 / 3;
+    border: 1px solid black;
+    padding: 3px;
+    margin-bottom: 10px;
+  }
+
+  div.basket-container {
+    grid-row: 2;
+    grid-column: 1;
+    margin-right: 10px;
+    border: 1px solid black;
+    height: 650px;
+  }
+
+  /* search-or-recordstage */
+  div.search-or-recordstage-container {
+    grid-row: 2;
+    grid-column: 2;
+    border: 1px solid black;
+    position: block;
+    width: 1100px;
+    height: 675px;
+    
+  }
+
+  div.search-container {
+    border: 1px solid red;
+    height: 100%;
+  }
+
+  div.search-container__hidden {
+    display: none;
+  }
+
+  div.recordstage-container {
+    border: 1px solid yellow;
+    height: 100%;
+  }
+
+  div.recordstage-container__hidden {
+    display: none;
+  }
+
+  /* header */
+  .header-logo > img {
+    width: 50px;
+  }
+
+  /* basket */
+  div.basket {
+    padding: 3px;
+    width: 200px
+  }
+
+  div.basket__hidden {
+    display: none;
+  }
+
+  /* basket-record */
+  div.basket-record {
+    border: 1px dotted red
+  }
+
+  div.basket-record-selected {
+    background-color: gold;
+  }
+
+  div.basket-record:hover {
+    cursor: pointer;
+    background-color: lightgray;
+  }
+
+  /* recordstage */
+  div.recordstage-menu {
+    display: flex;
+    border: 1px solid black;
+    padding: 3px;
+  }
+
+  div.recordstage-display {
+    border: 1px solid green;
+  }
+
+  /* recordstage record */
+  div.recordstage-record {
+    border: 1px solid blue
+  }
+</style>
