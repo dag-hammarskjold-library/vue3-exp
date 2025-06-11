@@ -9,7 +9,7 @@
 <script type="module">
   import { createApp } from "./static/js/vue-v3.5.13.esm-browser.js"
   import { User } from "./static/js/user.mjs"
-  import { Jmarc } from "./static/js/jmarc.mjs"
+  import { Jmarc, Field, Subfield } from "./static/js/jmarc.mjs"
   
   // data to be provided provided by the server. hardcoded for now
   var APIURL = "http://localhost:5000/api/"
@@ -29,9 +29,11 @@
         basketRecords: [], // the records in the user's basket
         activeRecords: [], // the records in the recordstage
         // css
-        basketContainer: {"basket-container": true, "basket-container__hidden": false},
-        searchContainer: {"search-container": true, "search-container__hidden": false},
-        recordstageContainer: {"recordstage-container": true, "recordstage-container__hidden": true}
+        classes: {
+          basket: {"app-basket": true, "app-basket__hidden": false},
+          search: {"app-search": true, "app-search__hidden": false},
+          recordstage: {"app-recordstage": true, "app-recordstage__hidden": true}
+        }
       }
     },
     computed: {
@@ -43,28 +45,39 @@
       <br>Note: DLX-REST must be running on localhost:5000 in order to use the API
       <br>
       <div class="app-container">
-        <app-header class="header-container"></app-header>
-        <div>
-          <span class="clickable-text" @click="toggleShowBasket">{{ basketToggleMessage }}</span>
-          <app-basket :class="basketContainer" :user="user" @activate-record="(jmarc) => activateRecord(jmarc)"></app-basket>
+        <div class="header-container">
+          <app-header />
         </div>
-        <div class="search-or-recordstage-container">
+        <div class="basket-container">
+          <span class="clickable-text" @click="toggleShowBasket">{{ basketToggleMessage }}</span>
+          <app-basket 
+            :class="classes.basket"
+            :user="user"
+            :activeRecords="activeRecords"
+            @activate-record="(jmarc) => activateRecord(jmarc)"
+          />
+        </div>
+        <div class="main-stage-container">
           <span class="clickable-text" @click="toggleShowSearchEditor">{{ editorToggleMessage }}</span>
-          <app-search :class="searchContainer"></app-search>
-          <app-recordstage :class="recordstageContainer" :records="activeRecords"></app-recordstage>
+          <app-search :class="classes.search"></app-search>
+          <app-recordstage 
+            :class="classes.recordstage"
+            :records="activeRecords"
+            @close-record="(jmarc) => closeRecord(jmarc)"
+          />
         </div>
       </div>
     `,
     methods: {
       toggleShowBasket() {
         this.showBasket = !this.showBasket
-        this.basketContainer["basket__hidden"] = !this.basketContainer["basket__hidden"]
+        this.classes.basket["basket__hidden"] = !this.classes.basket["basket__hidden"]
       },
       toggleShowSearchEditor() {
         this.showSearch = !this.showSearch
         this.showRecordstage = !this.showRecordstage
-        this.searchContainer["recordstage-container__hidden"] = !this.searchContainer["recordstage-container__hidden"]
-        this.recordstageContainer["recordstage-container__hidden"] = !this.recordstageContainer["recordstage-container__hidden"]
+        this.classes.search["app-search__hidden"] = !this.classes.search["app-search__hidden"]
+        this.classes.recordstage["app-recordstage__hidden"] = !this.classes.recordstage["app-recordstage__hidden"]
       },
       activateRecord(jmarc) {
         console.log("opening " + jmarc.recordId)
@@ -73,14 +86,19 @@
           this.toggleShowSearchEditor()
         }
         
+        // set the record as the first element of the array
         if (this.activeRecords.includes(jmarc)) {
           const index = this.activeRecords.indexOf(jmarc)
           this.activeRecords.splice(index, 1)
         }
 
-        // set the record as the first element of the array
         this.activeRecords.unshift(jmarc)
-        
+      },
+      closeRecord(jmarc) {
+        if (this.activeRecords.includes(jmarc)) {
+          const index = this.activeRecords.indexOf(jmarc)
+          this.activeRecords.splice(index, 1)
+        }
       }
     }
   })
@@ -113,20 +131,34 @@
   app.component(
     "app-basket",
     {
-      props: {user: {type: User}},
+      props: {user: {type: User}, activeRecords: {type: Array}},
       data: function() {
         return {
           hidden: false,
           records: [],
+          myActiveRecords: this.activeRecords,
           // css
-          class: {basket__hidden: false}
+          classes: {basketRecord: {"basket-record": true}}
         }
       },
       created() {},
       template: /* html */ `
-        <div class="basket">
+        <div class="app-basket">
           <div v-for="jmarc in records" :key="jmarc.collection + '/' + jmarc.recordId">
-            <basket-record :jmarc="jmarc" @click="$emit('activate-record', jmarc)"></basket-record>
+            <basket-record 
+              v-if="myActiveRecords.includes(jmarc)"
+              :class="classes.basketRecord"
+              :jmarc="jmarc"
+              :active="true"
+              @click="$emit('activate-record', jmarc); activateRecord(jmarc)"
+            />
+            <basket-record 
+              v-else
+              :class="classes.basketRecord"
+              :jmarc="jmarc"
+              :active="false"
+              @click="$emit('activate-record', jmarc); activateRecord(jmarc)"
+            />
           </div>
         </div>
       `,
@@ -143,6 +175,25 @@
       methods: {
         addRecord(jmarc) {
           this.records.push(jmarc)
+        },
+        activateRecord(jmarc, key) {
+          // move to front of basket
+          if (this.records.includes(jmarc)) {
+            const index = this.records.indexOf(jmarc)
+            this.records.splice(index, 1)
+          }
+
+          if (!this.myActiveRecords.includes(jmarc)) {
+            this.myActiveRecords.push(jmarc)
+          }
+
+          this.records.unshift(jmarc)
+        },
+        closeRecord(jmarc) {
+          if (this.records.includes(jmarc)) {
+            const index = this.records.indexOf(jmarc)
+            this.records.splice(index, 1)
+          }
         }
       }
     }
@@ -151,65 +202,39 @@
   app.component(
     "basket-record",
     {
-      props: {jmarc: {"type": Jmarc}},
-      data: function() {
-        return {}
-      },
-      template: /* html */ `
-        <div class="basket-record">
-          {{ jmarc.collection + "/" + jmarc.recordId  }}
-          <!-- {{ jmarc.toStr() }} -->
-        </div>
-      `,
-      methods: {}
-    }
-  )
-  
-  /* recordstage */
-  app.component(
-    "app-recordstage",
-    {
-      props: {records: {type: Array}},
+      props: {jmarc: {type: Jmarc}, active: {type: Boolean}},
       data: function() {
         return {
-          hidden: false,
+          // css
+          classes: {basketRecord: {"basket-record": true, "basket-record__selected": this.active}}
+        }
+      },
+      computed: {
+        symbol() {
+          let field = this.jmarc.getField("191")
+
+          if (!field) {
+            field = this.jmarc.getField("791")
+          }
+
+          if (field) {
+            return field.getSubfield("a").value
+          }
         }
       },
       template: /* html */ `
-        <div class="recordstage">
-          <div class="recordstage-menu">
-            <button @click="toggleCreateRecordDropdown">create record</button>
-            <button class="merge-record" @click="toggleMergeRecordsDropdown">merge auths</button>
-          </div>
-          <div class="recordstage-display">
-            <recordstage-record v-for="jmarc in records" :key="jmarc.collection + jmarc.recordId" :record="jmarc"></recordstage-record>
-          </div>
-
+        <div :class="classes.basketRecord">
+          {{ jmarc.collection + "/" + jmarc.recordId  }}
+          <br>
+          {{ symbol }}
         </div>
       `,
-      //watch: {records: function(before, after) {console.log("is this doing anything?")}},
       methods: {
-        addRecord(jmarc) {
-          this.records.push(jmarc)
-        },
-        toggleCreateRecordDropdown() {window.alert("workform list")},
-        toggleMergeRecordsDropdown() {window.alert("merge chooser")}
+        recordSelected() {
+          //this.classes.basketRecord["basket-record__selected"] = true
+          //this.active = true
+        }
       }
-    }
-  )
-
-  app.component(
-    "recordstage-record",
-    {
-      props: {record: {type: Jmarc}},
-      data: function() {
-        return {}
-      },
-      template: /* html */ `
-        <div class="recordstage-record">
-          {{ record.toStr() }}
-        </div>
-      `
     }
   )
 
@@ -243,6 +268,216 @@
       template: /* html */ `
         <div></div>
       `
+    }
+  )
+  
+  /* recordstage */
+  app.component(
+    "app-recordstage",
+    {
+      props: {records: {type: Array}},
+      data: function() {
+        return {
+          hidden: false,
+        }
+      },
+      template: /* html */ `
+        <div class="recordstage">
+          <div class="recordstage-menu">
+            <button @click="toggleCreateRecordDropdown">create record</button>
+            <button class="merge-record" @click="toggleMergeRecordsDropdown">merge auths</button>
+          </div>
+          <div class="recordstage-display">
+            <recordstage-record 
+              v-for="jmarc in records" 
+              :key="jmarc.collection + jmarc.recordId" 
+              :record="jmarc"
+              @close-record="closeRecord"
+            />
+          </div>
+
+        </div>
+      `,
+      methods: {
+        addRecord(jmarc) {
+          this.records.push(jmarc)
+        },
+        toggleCreateRecordDropdown() {window.alert("workform list")},
+        toggleMergeRecordsDropdown() {window.alert("merge chooser")},
+        closeRecord(jmarc) {
+          this.$emit('close-record', jmarc)
+        }
+      }
+    }
+  )
+
+  app.component(
+    "recordstage-record",
+    {
+      props: {record: {type: Jmarc}},
+      data: function() {
+        return {}
+      },
+      template: /* html */ `
+        <div class="record-container"
+          @delete-field="deleteField"
+        >
+          <div class="record-header">
+            <div class="record-header-id">{{ record.collection + "/" + record.recordId }}</div>
+            <div class="record-close" @click="$emit('close-record', record)" title="close record">&#10006;</div>
+          </div>
+          <record-field v-for="field in record.getDataFields()" :field="field"></record-field>
+        </div>
+      `,
+      methods: {
+        deleteField(field) {
+          record.deleteField(field)
+        }
+      }
+    }
+  )
+
+  app.component(
+    "record-field",
+    {
+      props: {field: {type: Field}},
+      data: function() {
+        const highlightedFields =  ["191", "791"]
+
+        return {
+          readOnly: false,
+          authorityControlled: "subfield" in this.field && this.field.subfields.some((x) => {x.xref}) ? true : false,
+          initialTag: this.field.tag,
+          // css
+          classes: {
+            container: {
+              "record-field-container": true,
+              "record-field-container__highlighted": highlightedFields.includes(this.field.tag) ? true : false,
+            },
+            tag: {"record-field-tag": true},
+          }
+        }
+      },
+      template: /* html */ `
+        <div :class="classes.container">
+          <div
+            :class="classes.tag"
+            :contenteditable="readOnly ? false : true"
+            @keydown="keyDown($event)"
+            @input="setTag($event)"
+          >
+            {{ initialTag }}
+          </div>
+          <div class="record-field-indicators">
+            &nbsp;
+            <span>{{ field.indicators[0] }}</span>
+            
+            <span>{{ field.indicators[1] }}</span>
+            &nbsp;
+          </div>
+          <div class="subfield-container">
+            <record-field-subfield v-for="subfield in field.subfields" :subfield="subfield" />
+          </div>
+        </div>
+      `,
+      methods: {
+        keyDown(event) {
+          switch(event.key) {
+            case 'Enter':
+              event.preventDefault()
+              event.target.blur()
+              return
+            case "ArrowUp":
+              // todo: go to above tag
+              return
+            case "ArrowDown":
+              // todo: go to below tag
+              return
+          }
+          
+          if (event.target.innerText.length === 3) {
+            // prevent input if tag is already 3 chars and key is an alphanumeric char
+            if (event.key.length === 1 && event.key.charCodeAt() > 32) {
+              event.preventDefault()
+              return
+            }
+          }
+        },
+        setTag(event) {
+          this.field.tag = event.target.innerText
+
+          // unsaved changes
+          if (this.field.tag !== this.initialTag) {
+            // todo
+          }
+
+          // validations?
+          
+        }
+      }
+    }
+  )
+
+  app.component(
+    "record-field-subfield",
+    {
+      props: {subfield: {type: Subfield}},
+      data: function() {
+        return {
+          readOnly: false,
+          authorityControlled: this.subfield.xref ? true : false,
+          initialValue: this.subfield.value,
+          // css
+          classes: {
+            subfieldValue: {"clickable-text": this.subfield.xref ? true : false, "subfield-value__changed": false}
+          }
+        }
+      },
+      template: /* html */ `
+        <span class="subfield-code">\${{ subfield.code }}</span>&nbsp;
+        <!-- <input type="text" :value="subfield.value" :size="subfield.value.length"></input> -->
+        <span 
+          :class="classes['subfieldValue']" 
+          :contenteditable="readOnly ? false : true"
+          @keydown="keyDown($event)"
+          @input="setValue($event, subfield)"
+        >
+        {{ initialValue }}
+        </span>
+        &nbsp;
+      `,
+      methods: {
+        keyDown(event) {
+          switch(event.key) {
+            case "Enter":
+              event.preventDefault()
+              return
+            // arrow key behavior TBD
+            case "ArrowUp":
+              break
+            case "ArrowDown":
+              break
+            case "ArrowLeft":
+              break
+            case "ArrowRight":
+              break  
+          }
+        },
+        setValue(event, subfield) {
+          subfield.value = event.target.innerText
+          
+          // unsaved changes
+          this.classes.subfieldValue["subfield-value__changed"] = subfield.value !== this.initialValue ? true : false
+          
+          // validations
+          this.classes.subfieldValue["subfield-value__invalid"] = false
+          
+          for (const warning of subfield.validationWarnings()) {
+            event.target.title = warning.message
+            this.classes.subfieldValue["subfield-value__invalid"] = true
+          }
+        }
+      }
     }
   )
 
@@ -286,7 +521,7 @@
   }
 
   /* search-or-recordstage */
-  div.search-or-recordstage-container {
+  div.main-stage-container {
     grid-row: 2;
     grid-column: 2;
     border: 1px solid black;
@@ -296,21 +531,21 @@
     
   }
 
-  div.search-container {
+  div.app-search {
     border: 1px solid red;
     height: 100%;
   }
 
-  div.search-container__hidden {
+  div.app-search__hidden {
     display: none;
   }
 
-  div.recordstage-container {
+  div.app-recordstage {
     border: 1px solid yellow;
     height: 100%;
   }
 
-  div.recordstage-container__hidden {
+  div.app-recordstage__hidden {
     display: none;
   }
 
@@ -320,7 +555,7 @@
   }
 
   /* basket */
-  div.basket {
+  div.app-basket {
     padding: 3px;
     width: 200px
   }
@@ -334,8 +569,8 @@
     border: 1px dotted red
   }
 
-  div.basket-record-selected {
-    background-color: gold;
+  div.basket-record__selected {
+    background-color: silver;
   }
 
   div.basket-record:hover {
@@ -355,7 +590,71 @@
   }
 
   /* recordstage record */
-  div.recordstage-record {
-    border: 1px solid blue
+  div.record-container {
+    border: 1px solid blue;
+    display: inline-grid;
   }
+
+  div.record-header {
+    display: inline-grid;
+    grid-template-columns: 2;
+  }
+
+  div.record-header-id {
+    grid-column: 1
+  }
+
+  div.record-close {
+    grid-column: 2;
+    text-align: right;
+  }
+
+  div.record-close:hover {
+    cursor: pointer;
+  }
+
+  /* record field */
+  div.record-field-container {
+    border: 1px dotted black;
+    display: inline-grid;
+    grid-template-columns: 3;
+    justify-content: left;
+  }
+
+  div.record-field-container__highlighted {
+    border: 1px dotted red
+  }
+
+  div.record-field-tag {
+    grid-column: 1;
+    color: midnightblue;
+    font-weight: bold;
+  }
+
+  div.record-field-indicators {
+    grid-column: 2
+  }
+
+  div.subfield-container {
+    grid-column: 3
+  }
+
+  /* record subfield */
+  .subfield-code {
+    color: salmon
+  }
+
+  .subfield-authority-controlled {
+    color: blue;
+    text-decoration: underline;
+  }
+
+  .subfield-value__changed {
+    background-color: lightgoldenrodyellow;
+  }
+
+  .subfield-value__invalid {
+    background-color: lightcoral;
+  }
+
 </style>
