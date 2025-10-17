@@ -193,10 +193,15 @@ class LinkedSubfield extends Subfield {
 	}
 }
 
-export class ControlField {
+export class Field {
+	constructor() {}
+}
+
+export class ControlField extends Field {
 	constructor(tag, value) {
 		if (tag && !tag.match(/^00/)) { throw new Error("invalid Control Field tag") }
-
+		
+		super()
 		this.tag = tag;
 		this.value = value;
 	}
@@ -208,10 +213,11 @@ export class ControlField {
 	validate() { }
 }
 
-export class DataField {
+export class DataField extends Field {
 	constructor(tag, indicators, subfields) {
 		if (tag && tag.match(/^00/)) { throw new Error("invalid Data Field tag") }
 
+		super()
 		this.checked = false;
 		this.tag = tag;
 		this.indicators = indicators || [" ", " "];
